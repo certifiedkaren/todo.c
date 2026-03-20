@@ -5,6 +5,7 @@ persistent storage with a text file
 */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -41,8 +42,8 @@ int main(void) {
     return 1;
   }
 
-  listen(server, 10);
-  if (server == -1) {
+  int is_listening = listen(server, 10);
+  if (is_listening == -1) {
     printf("failed to listen on port %d\n", port);
     return 1;
   }
@@ -54,7 +55,8 @@ int main(void) {
       printf("error with accepting request");
       break;
     }
-    char buf[512] = {0};
+
+    char buf[2048] = {0};
     int request = read(client, buf, sizeof(buf));
     if (request == -1) {
       printf("failed to read request");
@@ -62,15 +64,39 @@ int main(void) {
     }
     printf("request:\n%s\n", buf);
 
-    char *response =
-            "HTTP/1.1 200 OK\r\n"
-            "Content-Type: text/plain\r\n"
-            "\r\n"
-            "Hello World\n";
+    FILE *fp;
+    fp = fopen("index.html", "r");
+    if (fp == NULL) {
+      printf("failed to open file");
+      return 1;
+    }
 
-    write(client, response, strlen(response));
+    fseek(fp, 0, SEEK_END);
+    long file_len = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    
+    char *contents = malloc(file_len + 1);
+    if (contents == NULL) {
+      printf("failed to allocate memory");
+      return 1;
+    }
+    fread(contents, 1, file_len, fp);
+    contents[file_len] = '\0';
+
+    char header[256];
+    sprintf(header, 
+          "HTTP/1.1 200 OK\r\n"
+          "Content-Type: text/html\r\n"
+          "Content-Length: %ld\r\n"
+          "\r\n", file_len);
+      
+    write(client, header, strlen(header));
+    write(client, contents, strlen(contents));
+    fclose(fp);
+    free(contents);
     close(client);
   }
+
   return 0;
 }
 
