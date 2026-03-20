@@ -12,6 +12,16 @@ persistent storage with a text file
 #include <string.h>
 
 struct sockaddr_in addr;
+
+typedef struct {
+  int id;
+  char task[256];
+  int completed;
+} TODO_ITEM;
+
+TODO_ITEM db[128];
+int todo_count = 0;
+
 int main(void) {
   int server = socket(AF_INET, SOCK_STREAM, 0);
   if (server == -1) {
@@ -19,22 +29,24 @@ int main(void) {
     return 1;
   }
 
+  int port = 6969;
+
   addr.sin_family = AF_INET; 
   addr.sin_addr.s_addr = INADDR_ANY;
-  addr.sin_port = htons(6969);
+  addr.sin_port = htons(port);
 
   int binded_addr = bind(server, (struct sockaddr*) &addr, sizeof(addr));
   if (binded_addr == -1) {
-    printf("error binding socket to address %d\n", addr.sin_port);
+    printf("error binding socket to address %d\n", port);
     return 1;
   }
 
   listen(server, 10);
   if (server == -1) {
-    printf("failed to listen on port %d\n", addr.sin_port);
+    printf("failed to listen on port %d\n", port);
     return 1;
   }
-  printf("server running on port %d\n", addr.sin_port);
+  printf("server running on port %d\n", port);
 
   while(1) {
     int client = accept(server, NULL, NULL);
@@ -55,8 +67,10 @@ int main(void) {
             "Content-Type: text/plain\r\n"
             "\r\n"
             "Hello World\n";
+
     write(client, response, strlen(response));
     close(client);
   }
   return 0;
 }
+
