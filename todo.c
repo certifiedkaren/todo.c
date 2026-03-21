@@ -4,6 +4,7 @@ open a webserver for a basic todo application
 persistent storage with a text file
 */
 
+#include <asm-generic/socket.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <netinet/in.h>
@@ -27,11 +28,18 @@ int main(void) {
     return 1;
   }
 
-  int port = 6969;
+  int port = 8000;
 
   addr.sin_family = AF_INET; 
   addr.sin_addr.s_addr = INADDR_ANY;
   addr.sin_port = htons(port);
+
+  int opt = 1;
+  int server_opt = setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+  if (server_opt == -1) {
+    printf("error setting socket options\n");
+    return 1;
+  }
 
   int binded_addr = bind(server, (struct sockaddr*) &addr, sizeof(addr));
   if (binded_addr == -1) {
@@ -53,22 +61,19 @@ int main(void) {
       break;
     }
 
-    char buf[2048] = {0};
-    int request = read(client, buf, sizeof(buf) - 1);
+    char request_buf[2048] = {0};
+    int request = read(client, request_buf, sizeof(request_buf) - 1);
     if (request <= 0) {
       printf("failed to allocated buffer\n");
       return 1;
     }
     else {
-      buf[request] = '\0';
+      request_buf[request] = '\0';
     }
-    printf("request:\n%s\n", buf);
+    printf("request:\n%s\n", request_buf);
 
-    int is_post = 0;
-    char task_buf[128];
-    if (strncmp(buf, "POST /add", 9) == 0) {
-      is_post = 1;
-      char *body = strstr(buf, "\r\n\r\n");
+    if (strncmp(request_buf, "POST /add", 9) == 0) {
+      char *body = strstr(request_buf, "\r\n\r\n");
       if (body) {
         body += 4;
         char *equal_sign = strstr(body, "=");
@@ -80,10 +85,30 @@ int main(void) {
               *ptr = ' '; 
             ptr++;
           }
-          if (task_count < MAX_TASKS) {
+          if (task_count < MAX_TASKS && strlen(task) > 0) {
             strncpy(task_list[task_count], task, sizeof(task_list[task_count]));
             task_list[task_count][MAX_TASK_LEN - 1] = '\0';
             task_count++;
+          }
+        }
+      }
+    }
+
+    if (strncmp(request_buf, "POST /delete", 12) == 0) {
+      char *body = strstr(request_buf, "\r\n\r\n");
+      if (body) {
+        body += 4;
+        char *equal_sign = strstr(body, "=");
+        if (equal_sign) {
+          char *task = equal_sign + 1; 
+          char *tmp;
+          int task_to_delete = (int) strtol(task, &tmp, 10) ;
+          if (task_to_delete >= 0 && task_to_delete < task_count) {
+            for (int i = task_to_delete; i < task_count - 1; i++) {
+              strcpy(task_list[i], task_list[i+1]) ;
+            }
+            task_list[task_count-1][0] = '\0';
+            task_count--;
           }
         }
       }
@@ -109,17 +134,28 @@ int main(void) {
     fread(html, 1, file_len, fp);
     html[file_len] = '\0';
 
-    char task_list_html[2048] = {0};
+    char task_list_html[35000] = {0};
     for (int i = 0; i < task_count; i++) {
-      char task_line[256];
-      snprintf(task_line, sizeof(task_line), "    <li>%s</li>\n", task_list[i]);
-      strncat(task_list_html, task_line, sizeof(task_list_html) - strlen(task_list_html) - 1);
+      char task_line[350] = {0};
+      if (task_list[i][0] != '\0') {
+        snprintf(task_line, sizeof(task_line),
+              "<li>\n"
+              "  %s\n"
+              "  <form method=\"POST\" action=\"/delete\" style=\"display:inline\">\n"
+              "    <input type=\"hidden\" name=\"index\" value=\"%d\">\n"
+              "    <button type=\"submit\">X</button>\n"
+              "  </form>\n"
+              "</li>\n"
+               , task_list[i], i);
+        strncat(task_list_html, task_line, sizeof(task_list_html) - strlen(task_list_html) - 1);
+      }
     }
 
     char *insert_pos = strstr(html, "  </ul>");
     if (!insert_pos) {
       printf("error parsing html\n");
       free(html);
+      fclose(fp);
       close(client);
       return 1;
     }
@@ -130,12 +166,13 @@ int main(void) {
     if (html == NULL) {
       printf("failed to reallocate memory\n");
       free(html);
+      fclose(fp);
       close(client);
       return 1;
     }
     html = temp;
     insert_pos = html + offset;
-
+    
     memmove(insert_pos + task_list_len, insert_pos, strlen(insert_pos) + 1);
     memcpy(insert_pos, task_list_html, task_list_len);
 
@@ -148,8 +185,8 @@ int main(void) {
 
     write(client, header, strlen(header));
     write(client, html, strlen(html));
-    fclose(fp);
     free(html);
+    fclose(fp);
     close(client);
   }
 

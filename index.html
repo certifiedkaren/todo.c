@@ -9,14 +9,22 @@
 
 <body>
   <h1>TODO list in c</h1>
-  <p>some sample text</p>
   <form method="POST" action="/add">
     <input type="text" name="task" />
     <button type="submit">Add</button>
   </form>
 
   <ul>
-    <li>Task 1</li>
+    <!--
+    task structure
+    <li>
+      Task 1
+      <form method="POST" action="/delete" style="display:inline">
+        <input type="hidden" name="index" value="0">
+        <button type="submit">X</button>
+      </form>
+    </li>
+    -->
   </ul>
 </body>
 
