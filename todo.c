@@ -4,7 +4,6 @@ open a webserver for a basic todo application
 persistent storage with a text file
 */
 
-#include <asm-generic/socket.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <netinet/in.h>
@@ -24,11 +23,11 @@ int task_count = 0;
 int main(void) {
   int server = socket(AF_INET, SOCK_STREAM, 0);
   if (server == -1) {
-    printf("error creating socket\n");
+    perror("socket");
     return 1;
   }
 
-  int port = 8000;
+  int port = 6969;
 
   addr.sin_family = AF_INET; 
   addr.sin_addr.s_addr = INADDR_ANY;
@@ -37,34 +36,45 @@ int main(void) {
   int opt = 1;
   int server_opt = setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
   if (server_opt == -1) {
-    printf("error setting socket options\n");
+    fprintf(stderr, "error setting socket options\n");
     return 1;
   }
 
   int binded_addr = bind(server, (struct sockaddr*) &addr, sizeof(addr));
   if (binded_addr == -1) {
-    printf("error binding socket to address %d\n", port);
+    perror("bind");
     return 1;
   }
 
   int is_listening = listen(server, 10);
   if (is_listening == -1) {
-    printf("failed to listen on port %d\n", port);
+    perror("listen");
     return 1;
   }
   printf("server running on port %d\n", port);
+
+  FILE *fp = fopen("todo.db", "r");
+  if (fp == NULL)
+    printf("no database file found\n");
+  if (fp) {
+    while(fgets(task_list[task_count], MAX_TASK_LEN, fp) != NULL) {
+      task_list[task_count][strcspn(task_list[task_count], "\n")] = '\0';
+      task_count++;
+    } 
+    fclose(fp);
+  }
   
   while(1) {
     int client = accept(server, NULL, NULL);
     if (client == -1) {
-      printf("error with accepting request\n");
+      perror("accept");
       break;
     }
 
     char request_buf[2048] = {0};
     int request = read(client, request_buf, sizeof(request_buf) - 1);
     if (request <= 0) {
-      printf("failed to allocated buffer\n");
+      fprintf(stderr, "failed to allocate buffer\n");
       return 1;
     }
     else {
@@ -114,10 +124,14 @@ int main(void) {
       }
     }
 
+    if (strncmp(request_buf, "POST /quit", 10) == 0) {
+      break;
+    }
+
     FILE *fp;
     fp = fopen("index.html", "r");
     if (fp == NULL) {
-      printf("failed to open file\n");
+      perror("fopen");
       return 1;
     }
 
@@ -127,7 +141,7 @@ int main(void) {
 
     char *html = malloc(file_len + 1);
     if (html == NULL) {
-      printf("failed to allocate memory\n");
+      fprintf(stderr, "failed to allocate memory\n");
       return 1;
     }
 
@@ -153,7 +167,7 @@ int main(void) {
 
     char *insert_pos = strstr(html, "  </ul>");
     if (!insert_pos) {
-      printf("error parsing html\n");
+      fprintf(stderr, "error parsing html\n");
       free(html);
       fclose(fp);
       close(client);
@@ -164,7 +178,7 @@ int main(void) {
 
     char *temp = realloc(html, file_len + 1 + strlen(task_list_html));
     if (html == NULL) {
-      printf("failed to reallocate memory\n");
+      fprintf(stderr, "failed to reallocate memory\n");
       free(html);
       fclose(fp);
       close(client);
@@ -172,7 +186,7 @@ int main(void) {
     }
     html = temp;
     insert_pos = html + offset;
-    
+
     memmove(insert_pos + task_list_len, insert_pos, strlen(insert_pos) + 1);
     memcpy(insert_pos, task_list_html, task_list_len);
 
@@ -189,6 +203,18 @@ int main(void) {
     fclose(fp);
     close(client);
   }
+
+  FILE *todo_fp;
+  todo_fp = fopen("todo.db", "w");
+  if (todo_fp == NULL) {
+    perror("fopen");
+    fclose(fp);
+    return 1;
+  }
+  for (int i = 0; i < task_count; i++) {
+    fprintf(todo_fp, "%s\n", task_list[i]);
+  }
+  fclose(todo_fp);
 
   return 0;
 }
