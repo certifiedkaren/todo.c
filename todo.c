@@ -1,11 +1,13 @@
 /* 
-todo app in c, later build it in asm
-open a webserver for a basic todo application
-persistent storage with a text file
+  3/21/2026
+  simple todo app in c
+  opens a port to read http requests
+  persistent storage with a text file
 */
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -19,6 +21,9 @@ struct sockaddr_in addr;
 
 char task_list[MAX_TASKS][MAX_TASK_LEN];
 int task_count = 0;
+
+int hex_to_int(char c);
+void decode_http(char *s);
 
 int main(void) {
   int server = socket(AF_INET, SOCK_STREAM, 0);
@@ -89,12 +94,7 @@ int main(void) {
         char *equal_sign = strstr(body, "=");
         if (equal_sign) {
           char *task = equal_sign + 1;
-          char *ptr = task;
-          while (*ptr) {
-            if (*ptr == '+')
-              *ptr = ' '; 
-            ptr++;
-          }
+          decode_http(task);
           if (task_count < MAX_TASKS && strlen(task) > 0) {
             strncpy(task_list[task_count], task, sizeof(task_list[task_count]));
             task_list[task_count][MAX_TASK_LEN - 1] = '\0';
@@ -177,7 +177,7 @@ int main(void) {
     size_t task_list_len = strlen(task_list_html);
 
     char *temp = realloc(html, file_len + 1 + strlen(task_list_html));
-    if (html == NULL) {
+    if (temp == NULL) {
       fprintf(stderr, "failed to reallocate memory\n");
       free(html);
       fclose(fp);
@@ -208,7 +208,7 @@ int main(void) {
   todo_fp = fopen("todo.db", "w");
   if (todo_fp == NULL) {
     perror("fopen");
-    fclose(fp);
+    fclose(todo_fp);
     return 1;
   }
   for (int i = 0; i < task_count; i++) {
@@ -219,3 +219,32 @@ int main(void) {
   return 0;
 }
 
+int hex_to_int(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  return 0;
+}
+
+void decode_http(char *s) {
+  char *p = s;
+  while (*p) {
+    if (*p == '+') {
+      *p = ' ';
+    }
+    else if (*p == '%' && 
+      *(p+1) != '\0' && 
+      *(p+2) != '\0' &&
+      isxdigit(*(p+1)) && 
+      isxdigit(*(p+2)))
+    {
+      int ascii_value = (hex_to_int(*(p+1)) * 16) + hex_to_int(*(p+2));
+      if (ascii_value < 128) {
+        *p = (char) ascii_value;
+        memmove(p+1, p+3, strlen(p+3) + 1);
+        continue;
+      }
+    }
+    p++;
+  }
+}
