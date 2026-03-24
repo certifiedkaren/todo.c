@@ -13,17 +13,22 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <string.h>
+#include <signal.h>
 
 #define MAX_TASKS 100
 #define MAX_TASK_LEN 128
 
 struct sockaddr_in addr;
+volatile sig_atomic_t stop = 0;
 
 char task_list[MAX_TASKS][MAX_TASK_LEN];
 int task_count = 0;
 
 int hex_to_int(char c);
 void decode_http(char *s);
+void save_to_db(int sig) {
+  stop = 1;
+}
 
 int main(void) {
   int server = socket(AF_INET, SOCK_STREAM, 0);
@@ -68,8 +73,20 @@ int main(void) {
     } 
     fclose(fp);
   }
-  
-  while(1) {
+
+  struct sigaction sa;
+
+  sigemptyset(&sa.sa_mask);
+  sa.sa_handler = save_to_db;
+  sa.sa_flags = 0;
+
+  if (sigaction(SIGINT, &sa, NULL) == -1) {
+    perror("sigaction");
+    fclose(fp);
+    return 1;
+  }
+
+  while(!stop) {
     int client = accept(server, NULL, NULL);
     if (client == -1) {
       perror("accept");
